@@ -1,0 +1,13 @@
+# venv
+/myvenv
+
+# model
+unet-model/Trained models/retina_Unet_150epochs.hdf5
+unet-model/Trained models/retina_RESUnet_150epochs.hdf5
+unet-model/Trained models/retina_AttentionRESUnet_150epochs.hdf5
+
+# cache
+unet-model/__pycache__
+
+# dataset
+/Data
