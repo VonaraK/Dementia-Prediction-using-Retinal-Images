@@ -69,11 +69,11 @@ def arc_length_chord_length_ratio(vessel_segment):
     chord_length = euclidean(coords[0], coords[-1])
     return arc_length / chord_length if chord_length > 0 else 0
 
-# Fractal Dimension Calculation
 def calculate_fractal_dimension(skeleton, box_sizes=[2, 4, 8, 16, 32, 64]):
     try:
         if np.sum(skeleton) < 10:  # Ensure the skeleton is not too sparse
             return None
+
         box_counts = []
         for box_size in box_sizes:
             resized_img = cv2.resize(
@@ -82,12 +82,21 @@ def calculate_fractal_dimension(skeleton, box_sizes=[2, 4, 8, 16, 32, 64]):
                 interpolation=cv2.INTER_NEAREST
             )
             box_counts.append(np.sum(resized_img > 0))
-        log_box_sizes = np.log(np.array(box_sizes))
-        log_box_counts = np.log(np.array(box_counts))
+
+        # Remove zeros from box_counts to avoid issues with log
+        non_zero_indices = np.array(box_counts) > 0
+        if len(non_zero_indices) < 2:
+            return None  # Not enough data for regression
+
+        log_box_sizes = np.log(np.array(box_sizes)[non_zero_indices])
+        log_box_counts = np.log(np.array(box_counts)[non_zero_indices])
+
         slope, _, _, _, _ = linregress(log_box_sizes, log_box_counts)
         return -slope
-    except:
+    except Exception as e:
+        print(f"Error in fractal dimension calculation: {e}")
         return None
+
 
 def calculate_cra_or_crv(diameters, constant):
     diameters = sorted(diameters, reverse=True)[:6]
@@ -130,27 +139,30 @@ def process_image(image, model):
         'Fractal Dimension': fractal_dimension,
     }
 
-# Predict Condition using XGBoost model
 def predict_condition(extracted_params, xgb_model, scaler):
-    input_features = np.array([
-        extracted_params['Mean Tortuosity'],
-        extracted_params['CRAE'],
-        extracted_params['CRVE'],
-        extracted_params['AVR'],
-        extracted_params['Fractal Dimension']
-    ]).reshape(1, -1)
+    try:
+        input_features = np.array([
+            extracted_params.get('Mean Tortuosity', 0),
+            extracted_params.get('CRAE', 0),
+            extracted_params.get('CRVE', 0),
+            extracted_params.get('AVR', 0),
+            extracted_params.get('Fractal Dimension', 0)
+        ]).reshape(1, -1)
 
-    if None in input_features[0] or np.isnan(input_features).any():
-        return "Insufficient Data for Prediction"
+        # Check if features are valid
+        if np.isnan(input_features).any() or np.sum(input_features) == 0:
+            return "Insufficient Data for Prediction"
 
-    scaled_features = scaler.transform(input_features)
-    prediction = xgb_model.predict(scaled_features)
-    if prediction == 1:
-        return "Alzheimer's Disease (AD)"
-    elif prediction == 2:
-        return "Vascular Dementia (VaD)"
-    else:
-        return "Healthy"
+        # Apply scaling
+        scaled_features = scaler.transform(input_features)
+
+        # Make prediction
+        prediction = xgb_model.predict(scaled_features)[0]
+        return ["Healthy", "Alzheimer's Disease (AD)", "Vascular Dementia (VD)"][prediction]
+    except Exception as e:
+        print(f"Error during prediction: {e}")
+        return "Error in Prediction"
+
 
 # Streamlit UI
 def main():
@@ -159,29 +171,29 @@ def main():
     uploaded_right_eye = st.file_uploader("Upload Right Eye Image", type=["jpg", "png"])
     uploaded_left_eye = st.file_uploader("Upload Left Eye Image", type=["jpg", "png"])
 
-    if uploaded_right_eye and uploaded_left_eye:
-        right_eye_image = cv2.imdecode(np.frombuffer(uploaded_right_eye.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
-        left_eye_image = cv2.imdecode(np.frombuffer(uploaded_left_eye.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
+    # Streamlit UI Update
+if uploaded_right_eye and uploaded_left_eye:
+    # Process both images
+    right_eye_params = process_image(right_eye_image, model)
+    left_eye_params = process_image(left_eye_image, model)
 
-        model = load_segmentation_model('unet-model/Trained models/retina_attentionUnet_150epochs.hdf5')
-        xgb_model = load_xgb_model('xgb_model.pkl')
-        scaler = load_scaler('scaler.pkl')
+    # Predict the condition based on extracted parameters
+    right_eye_condition = predict_condition(right_eye_params, xgb_model, scaler)
+    left_eye_condition = predict_condition(left_eye_params, xgb_model, scaler)
 
-        right_eye_params = process_image(right_eye_image, model)
-        left_eye_params = process_image(left_eye_image, model)
+    # Display results
+    st.subheader("Right Eye Analysis")
+    st.table(pd.DataFrame([right_eye_params]))
 
-        right_eye_condition = predict_condition(right_eye_params, xgb_model, scaler)
-        left_eye_condition = predict_condition(left_eye_params, xgb_model, scaler)
+    st.subheader(f"Prediction: {right_eye_condition}")
 
-        st.subheader("Right Eye Analysis")
-        st.table(pd.DataFrame([right_eye_params]))
-        st.subheader(f"Prediction: {right_eye_condition}")
+    st.subheader("Left Eye Analysis")
+    st.table(pd.DataFrame([left_eye_params]))
 
-        st.subheader("Left Eye Analysis")
-        st.table(pd.DataFrame([left_eye_params]))
-        st.subheader(f"Prediction: {left_eye_condition}")
-    else:
-        st.warning("Please upload both right and left eye images")
+    st.subheader(f"Prediction: {left_eye_condition}")
+else:
+    st.warning("Please upload both right and left eye images")
+
 
 if __name__ == "__main__":
     main()
