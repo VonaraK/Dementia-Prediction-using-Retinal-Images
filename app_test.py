@@ -163,36 +163,45 @@ def predict_condition(extracted_params, xgb_model, scaler):
         print(f"Error during prediction: {e}")
         return "Error in Prediction"
 
-
 # Streamlit UI
 def main():
     st.title("Retinal Image Analysis for Dementia Prediction")
 
+    # Upload images
     uploaded_right_eye = st.file_uploader("Upload Right Eye Image", type=["jpg", "png"])
     uploaded_left_eye = st.file_uploader("Upload Left Eye Image", type=["jpg", "png"])
 
-    # Streamlit UI Update
-if uploaded_right_eye and uploaded_left_eye:
-    # Process both images
-    right_eye_params = process_image(right_eye_image, model)
-    left_eye_params = process_image(left_eye_image, model)
+    # Ensure both images are uploaded
+    if uploaded_right_eye and uploaded_left_eye:
+        # Read images into numpy arrays
+        right_eye_image = cv2.imdecode(np.frombuffer(uploaded_right_eye.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
+        left_eye_image = cv2.imdecode(np.frombuffer(uploaded_left_eye.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
 
-    # Predict the condition based on extracted parameters
-    right_eye_condition = predict_condition(right_eye_params, xgb_model, scaler)
-    left_eye_condition = predict_condition(left_eye_params, xgb_model, scaler)
+        # Load models and scaler
+        model = load_segmentation_model('unet-model/Trained models/retina_attentionUnet_150epochs.hdf5')
+        xgb_model = load_xgb_model('xgb_model.pkl')
+        scaler = load_scaler('scaler.pkl')
 
-    # Display results
-    st.subheader("Right Eye Analysis")
-    st.table(pd.DataFrame([right_eye_params]))
+        # Process both images
+        right_eye_params = process_image(right_eye_image, model)
+        left_eye_params = process_image(left_eye_image, model)
 
-    st.subheader(f"Prediction: {right_eye_condition}")
+        # Predict the condition based on extracted parameters
+        right_eye_condition = predict_condition(right_eye_params, xgb_model, scaler)
+        left_eye_condition = predict_condition(left_eye_params, xgb_model, scaler)
 
-    st.subheader("Left Eye Analysis")
-    st.table(pd.DataFrame([left_eye_params]))
+        # Display results for the right eye
+        st.subheader("Right Eye Analysis")
+        st.table(pd.DataFrame([right_eye_params]))
+        st.subheader(f"Prediction: {right_eye_condition}")
 
-    st.subheader(f"Prediction: {left_eye_condition}")
-else:
-    st.warning("Please upload both right and left eye images")
+        # Display results for the left eye
+        st.subheader("Left Eye Analysis")
+        st.table(pd.DataFrame([left_eye_params]))
+        st.subheader(f"Prediction: {left_eye_condition}")
+    else:
+        # Show warning if both images are not uploaded
+        st.warning("Please upload both right and left eye images.")
 
 
 if __name__ == "__main__":
