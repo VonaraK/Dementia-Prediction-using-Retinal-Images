@@ -7,3 +7,4 @@ scikit-image
 scipy
 albumentations
 scikit-learn
+xgboost
